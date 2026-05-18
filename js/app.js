@@ -5,20 +5,20 @@
 // ── State ────────────────────────────────────────────────────
 let stores      = [];
 let packs       = [];
-let selectedIds = new Set();   // active pack IDs to track
-let stockState  = {};          // { storeId: { packId: {status, qty} } }
+let selectedIds = new Set();
+let stockState  = {};
 let scanHistory = [];
 let settings    = {
-  bbApiKey:       '',
-  zip:            '85142',
-  email:          '',
-  interval:       30,
-  notify:         false,
-  sound:          false,
+  workerUrl: '',
+  zip:       '85142',
+  email:     '',
+  interval:  30,
+  notify:    false,
+  sound:     false,
 };
-let autoTimer   = null;
-let isScanning  = false;
-let lastPrevState = {};  // for restock detection
+let autoTimer  = null;
+let isScanning = false;
+let lastPrevState = {};
 
 // ── Boot ─────────────────────────────────────────────────────
 (function init() {
@@ -33,48 +33,29 @@ let lastPrevState = {};  // for restock detection
   updateHeaderSub();
 })();
 
-// ── Persistence helpers ───────────────────────────────────────
+// ── Persistence ───────────────────────────────────────────────
 function ls(key, fallback) {
   try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) : fallback; }
   catch { return fallback; }
 }
 function lsSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 
-function loadSettings()   { settings    = { ...settings, ...ls('ph_settings', {}) }; }
-function saveSettingsLS()  { lsSet('ph_settings', settings); }
-
-function loadStores() {
-  const saved = ls('ph_stores', null);
-  stores = saved ? saved : JSON.parse(JSON.stringify(DEFAULT_STORES));
-}
-function saveStores() { lsSet('ph_stores', stores); }
-
-function loadPacks() {
-  const saved = ls('ph_packs', null);
-  packs = saved ? saved : JSON.parse(JSON.stringify(DEFAULT_PACKS));
-}
-function savePacks() { lsSet('ph_packs', packs); }
-
-function loadSelected() {
+function loadSettings()  { settings   = { ...settings, ...ls('ph_settings', {}) }; }
+function saveSettingsLS(){ lsSet('ph_settings', settings); }
+function loadStores()    { stores     = ls('ph_stores', null) ?? JSON.parse(JSON.stringify(DEFAULT_STORES)); }
+function saveStores()    { lsSet('ph_stores', stores); }
+function loadPacks()     { packs      = ls('ph_packs',  null) ?? JSON.parse(JSON.stringify(DEFAULT_PACKS)); }
+function savePacks()     { lsSet('ph_packs',  packs); }
+function loadSelected()  {
   const saved = ls('ph_selected', null);
-  if (saved) {
-    selectedIds = new Set(saved);
-  } else {
-    // Default: select first 3
-    selectedIds = new Set(packs.slice(0, 3).map(p => p.id));
-  }
+  selectedIds = saved ? new Set(saved) : new Set(packs.slice(0, 3).map(p => p.id));
 }
-function saveSelected() { lsSet('ph_selected', [...selectedIds]); }
-
-function loadStockState() { stockState = ls('ph_stock', {}); }
-function saveStockState() { lsSet('ph_stock', stockState); }
+function saveSelected()  { lsSet('ph_selected', [...selectedIds]); }
+function loadStockState(){ stockState = ls('ph_stock', {}); }
+function saveStockState(){ lsSet('ph_stock', stockState); }
 
 // ── Render ────────────────────────────────────────────────────
-function renderAll() {
-  renderPacks();
-  renderStores();
-  renderLog();
-}
+function renderAll() { renderPacks(); renderStores(); renderLog(); }
 
 // ── Pack list ─────────────────────────────────────────────────
 function renderPacks() {
@@ -85,17 +66,17 @@ function renderPacks() {
   }
   el.innerHTML = packs.map(p => {
     const active = selectedIds.has(p.id);
-    const bsUrl  = p.upc ? API.brickseekUrl(p.upc, settings.zip) : null;
+    const bsUrl  = p.upc ? API.brickseekTargetUrl(p.upc, settings.zip) : null;
     return `
-    <div class="pack-item ${active ? 'active' : ''}" id="pi_${p.id}" onclick="togglePack('${p.id}')">
+    <div class="pack-item ${active ? 'active' : ''}" onclick="togglePack('${p.id}')">
       <span class="pack-emoji">${p.emoji || '📦'}</span>
       <div class="pack-info">
         <div class="pack-name">${p.name}</div>
-        <div class="pack-meta">${p.price || ''}${p.bbSku ? ' · BB SKU: ' + p.bbSku : ''}${p.tcin ? ' · TCIN: ' + p.tcin : ''}</div>
+        <div class="pack-meta">${p.price || ''}${p.tcin ? ' · TCIN: ' + p.tcin : ''}${p.bbSku ? ' · SKU: ' + p.bbSku : ''}</div>
       </div>
       <div class="pack-actions" onclick="event.stopPropagation()">
-        ${bsUrl ? `<a class="pack-brickseek" href="${bsUrl}" target="_blank" title="Check BrickSeek for Target stock">BrickSeek</a>` : ''}
-        <button class="pack-delete" onclick="deletePack('${p.id}')" title="Remove pack">✕</button>
+        ${bsUrl ? `<a class="pack-brickseek" href="${bsUrl}" target="_blank">BrickSeek</a>` : ''}
+        <button class="pack-delete" onclick="deletePack('${p.id}')">✕</button>
       </div>
       <div class="pack-check">✓</div>
     </div>`;
@@ -103,68 +84,68 @@ function renderPacks() {
 }
 
 function togglePack(id) {
-  if (selectedIds.has(id)) selectedIds.delete(id);
-  else selectedIds.add(id);
-  saveSelected();
-  renderPacks();
-  renderStores();
+  selectedIds.has(id) ? selectedIds.delete(id) : selectedIds.add(id);
+  saveSelected(); renderPacks(); renderStores();
 }
 
 function deletePack(id) {
-  if (!confirm('Remove this pack from tracking?')) return;
+  if (!confirm('Remove this pack?')) return;
   packs = packs.filter(p => p.id !== id);
   selectedIds.delete(id);
-  savePacks();
-  saveSelected();
-  renderPacks();
-  renderStores();
+  savePacks(); saveSelected(); renderPacks(); renderStores();
 }
 
 // ── Stores ────────────────────────────────────────────────────
 function renderStores() {
   const grid = document.getElementById('storeGrid');
+  const tracked = packs.filter(p => selectedIds.has(p.id));
+
   if (!stores.length) {
     grid.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;grid-column:1/-1;">No stores. Click + Add Store.</div>';
     return;
   }
-  const tracked = packs.filter(p => selectedIds.has(p.id));
 
   grid.innerHTML = stores.map(store => {
-    const badge     = store.retailer === 'target' ? '🎯' : '🟨';
-    const badgeCls  = store.retailer === 'target' ? 'target' : 'bestbuy';
+    const isTarget = store.retailer === 'target';
+    const badge    = isTarget ? '🎯' : '🟨';
+    const badgeCls = isTarget ? 'target' : 'bestbuy';
     const storeStock = stockState[store.id] || {};
+    const noWorker = isTarget && !settings.workerUrl;
 
     const items = tracked.length === 0
-      ? '<div class="store-empty">Select packs on the left →</div>'
+      ? '<div class="store-empty">Select packs on the left to track</div>'
       : tracked.map(pack => {
           const result = storeStock[pack.id];
-          let badgeHtml = '';
-          let rowCls    = '';
-          let bsLink    = '';
+          let badgeHtml = '', rowCls = '', actionLink = '';
 
-          if (!result) {
+          // Build status badge
+          if (noWorker && isTarget) {
+            badgeHtml = `<span class="badge no-sku" title="Add Worker URL in Settings">⚙️ Setup needed</span>`;
+          } else if (!result) {
             badgeHtml = `<span class="badge no-sku">Not checked</span>`;
           } else {
             const s = result.status;
-            if (s === 'in-stock')      { badgeHtml = `<span class="badge in-stock">✓ In Stock${result.qty ? ' ('+result.qty+')' : ''}</span>`; rowCls = 'in-stock'; }
-            else if (s === 'limited')  { badgeHtml = `<span class="badge limited">Low (${result.qty})</span>`; rowCls = 'in-stock'; }
-            else if (s === 'out')      { badgeHtml = `<span class="badge out">Out of Stock</span>`; }
-            else if (s === 'checking') { badgeHtml = `<span class="badge checking">Scanning…</span>`; }
-            else if (s === 'no-sku')   { badgeHtml = `<span class="badge no-sku">No SKU set</span>`; }
-            else if (s === 'no-key')   { badgeHtml = `<span class="badge no-sku">Need API key</span>`; }
-            else if (s === 'cors-fallback') { badgeHtml = `<span class="badge no-sku">Use BrickSeek ↓</span>`; }
-            else                       { badgeHtml = `<span class="badge out">Error</span>`; }
+            if      (s === 'in-stock')      { badgeHtml = `<span class="badge in-stock">✓ In Stock (${result.qty})</span>`; rowCls = 'in-stock'; }
+            else if (s === 'limited')       { badgeHtml = `<span class="badge limited">⚠ Low Stock (${result.qty})</span>`; rowCls = 'in-stock'; }
+            else if (s === 'out')           { badgeHtml = `<span class="badge out">Out of Stock</span>`; }
+            else if (s === 'checking')      { badgeHtml = `<span class="badge checking">Scanning…</span>`; }
+            else if (s === 'no-tcin')       { badgeHtml = `<span class="badge no-sku">No TCIN set</span>`; }
+            else if (s === 'no-store-id')   { badgeHtml = `<span class="badge no-sku">No Store ID</span>`; }
+            else if (s === 'no-worker')     { badgeHtml = `<span class="badge no-sku">⚙️ Add Worker URL</span>`; }
+            else if (s === 'use-brickseek') { badgeHtml = `<span class="badge no-sku">See BrickSeek →</span>`; }
+            else if (s === 'no-sku')        { badgeHtml = `<span class="badge no-sku">No SKU</span>`; }
+            else                            { badgeHtml = `<span class="badge out">Error</span>`; }
           }
 
-          // BrickSeek inline link for Target
-          if (store.retailer === 'target' && pack.upc) {
-            const url = API.brickseekUrl(pack.upc, settings.zip);
-            bsLink = `<a class="bs-link" href="${url}" target="_blank">BrickSeek</a>`;
-          }
-          // Best Buy product link
-          if (store.retailer === 'bestbuy' && pack.bbSku) {
-            const url = API.bestBuyProductUrl(pack.bbSku);
-            bsLink = `<a class="bs-link" href="${url}" target="_blank">BB.com</a>`;
+          // Action link — prefer product page when in stock, BrickSeek otherwise
+          if (isTarget) {
+            const url = (result?.status === 'in-stock' || result?.status === 'limited')
+              ? API.targetProductUrl(pack.tcin)
+              : API.brickseekTargetUrl(pack.upc, settings.zip);
+            if (url) actionLink = `<a class="bs-link" href="${url}" target="_blank">${result?.status === 'in-stock' || result?.status === 'limited' ? 'Target.com' : 'BrickSeek'}</a>`;
+          } else {
+            const url = API.brickseekBBUrl(pack.upc, settings.zip) ?? API.bestBuyProductUrl(pack.bbSku);
+            if (url) actionLink = `<a class="bs-link" href="${url}" target="_blank">BrickSeek</a>`;
           }
 
           return `
@@ -173,10 +154,7 @@ function renderStores() {
               <div class="item-name">${pack.emoji} ${pack.name}</div>
               <div class="item-sub">${pack.price || ''}</div>
             </div>
-            <div class="item-right">
-              ${badgeHtml}
-              ${bsLink}
-            </div>
+            <div class="item-right">${badgeHtml}${actionLink}</div>
           </div>`;
         }).join('');
 
@@ -187,9 +165,9 @@ function renderStores() {
         <div class="store-name-wrap">
           <div class="store-title">${store.name}</div>
           <div class="store-loc">${store.location}</div>
-          <div class="store-dist">📍 ${store.dist} · ${store.hours || ''}</div>
+          <div class="store-dist">📍 ${store.dist}${store.hours ? ' · ' + store.hours : ''}</div>
         </div>
-        <button class="store-delete-btn" onclick="deleteStore('${store.id}')" title="Remove store">✕</button>
+        <button class="store-delete-btn" onclick="deleteStore('${store.id}')">✕</button>
       </div>
       <div class="store-items">${items}</div>
     </div>`;
@@ -199,12 +177,10 @@ function renderStores() {
 }
 
 function deleteStore(id) {
-  if (!confirm('Remove this store from tracking?')) return;
+  if (!confirm('Remove this store?')) return;
   stores = stores.filter(s => s.id !== id);
   delete stockState[id];
-  saveStores();
-  saveStockState();
-  renderStores();
+  saveStores(); saveStockState(); renderStores();
 }
 
 // ── Scan ──────────────────────────────────────────────────────
@@ -212,59 +188,60 @@ async function runAllChecks() {
   if (isScanning) return;
   isScanning = true;
 
-  const btn = document.getElementById('checkBtn');
+  const btn  = document.getElementById('checkBtn');
+  const pill = document.getElementById('statusPill');
   btn.disabled = true;
   btn.textContent = '⏳ Scanning…';
-
-  const pill = document.getElementById('statusPill');
   pill.classList.add('scanning');
   document.getElementById('statusText').textContent = 'SCANNING';
 
   const tracked = packs.filter(p => selectedIds.has(p.id));
   if (!tracked.length) {
-    addLog('⚠️', 'No packs selected. Click a pack on the left to track it.');
-    finishScan(btn, pill);
-    return;
+    addLog('⚠️', 'No packs selected — click a pack on the left to start tracking.');
+    return finishScan(btn, pill);
+  }
+
+  const targetStores = stores.filter(s => s.retailer === 'target');
+  if (targetStores.length && !settings.workerUrl) {
+    addLog('⚙️', 'Worker URL not set — Target stores will show "Setup needed". Add it in ⚙️ Settings.');
   }
 
   addLog('🔍', `Scanning ${stores.length} store${stores.length !== 1 ? 's' : ''} for ${tracked.length} pack${tracked.length !== 1 ? 's' : ''}…`);
-
-  // Save previous state for restock detection
   lastPrevState = JSON.parse(JSON.stringify(stockState));
 
-  // Mark everything as checking
+  // Mark all as checking
   stores.forEach(store => {
     if (!stockState[store.id]) stockState[store.id] = {};
     tracked.forEach(p => { stockState[store.id][p.id] = { status: 'checking' }; });
   });
   renderStores();
 
-  // Check stores sequentially (avoid rate-limiting)
   for (const store of stores) {
-    const storeResults = await API.checkStore(store, tracked, settings.bbApiKey, settings.zip);
-    stockState[store.id] = { ...stockState[store.id], ...storeResults };
+    const results = await API.checkStore(store, tracked, settings);
+    stockState[store.id] = { ...stockState[store.id], ...results };
 
-    // Detect restocks
+    // Restock detection
     tracked.forEach(pack => {
       const prev = lastPrevState[store.id]?.[pack.id]?.status;
-      const curr = storeResults[pack.id]?.status;
-      const wasOut   = !prev || prev === 'out' || prev === 'error' || prev === 'cors-fallback';
-      const isNowIn  = curr === 'in-stock' || curr === 'limited';
+      const curr = results[pack.id]?.status;
+      const wasOut  = !prev || ['out','error','no-worker','checking'].includes(prev);
+      const isNowIn = curr === 'in-stock' || curr === 'limited';
       if (wasOut && isNowIn) {
-        const msg = `${pack.emoji} ${pack.name} ${curr === 'limited' ? '(low stock)' : ''} at ${store.name} ${store.location}!`;
-        triggerRestock(msg, store, pack);
+        triggerRestock(`${pack.emoji} ${pack.name}${curr === 'limited' ? ' (low stock)' : ''} at ${store.name} ${store.location}!`, store, pack);
       }
     });
 
-    // Log per-store result
-    const inCount  = tracked.filter(p => storeResults[p.id]?.status === 'in-stock').length;
-    const limCount = tracked.filter(p => storeResults[p.id]?.status === 'limited').length;
-    const errCount = tracked.filter(p => ['error','cors-fallback','no-key'].includes(storeResults[p.id]?.status)).length;
+    // Per-store log
+    const inCount  = tracked.filter(p => results[p.id]?.status === 'in-stock').length;
+    const limCount = tracked.filter(p => results[p.id]?.status === 'limited').length;
+    const errCount = tracked.filter(p => ['error','no-worker'].includes(results[p.id]?.status)).length;
 
     if (inCount || limCount) {
       addLog('✅', `${store.name} ${store.location}: ${inCount + limCount} pack(s) available!`);
-    } else if (errCount) {
-      addLog('⚠️', `${store.name} ${store.location}: ${errCount} check(s) failed — verify API key or use BrickSeek.`);
+    } else if (errCount && store.retailer === 'target') {
+      addLog('⚠️', `${store.name} ${store.location}: check failed — verify Worker URL in ⚙️ Settings.`);
+    } else if (results[Object.keys(results)[0]]?.status === 'no-worker') {
+      addLog('⚙️', `${store.name} ${store.location}: Worker URL needed for live data.`);
     } else {
       addLog('❌', `${store.name} ${store.location}: all tracked packs out of stock.`);
     }
@@ -272,9 +249,8 @@ async function runAllChecks() {
     renderStores();
   }
 
-  const now = new Date();
   document.getElementById('lastCheckTime').textContent =
-    now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   saveStockState();
   addLog('✔️', 'Scan complete.');
@@ -292,22 +268,15 @@ function finishScan(btn, pill) {
 // ── Restock alert ─────────────────────────────────────────────
 function triggerRestock(msg, store, pack) {
   document.getElementById('restockMsg').textContent = msg;
-  const url = store.retailer === 'target' && pack.upc
-    ? API.brickseekUrl(pack.upc, settings.zip)
-    : store.retailer === 'bestbuy' && pack.bbSku
-      ? API.bestBuyProductUrl(pack.bbSku)
-      : '#';
+  const url = store.retailer === 'target'
+    ? (API.targetProductUrl(pack.tcin) ?? API.brickseekTargetUrl(pack.upc, settings.zip) ?? '#')
+    : (API.brickseekBBUrl(pack.upc, settings.zip) ?? API.bestBuyProductUrl(pack.bbSku) ?? '#');
   document.getElementById('restockLink').href = url;
   document.getElementById('restockBanner').classList.add('show');
   addLog('🚨', `RESTOCK: ${msg}`);
-
   if (settings.sound) playChime();
-
   if (settings.notify && 'Notification' in window && Notification.permission === 'granted') {
-    new Notification('🎉 Poké Pack Restock!', {
-      body: msg,
-      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⚡</text></svg>',
-    });
+    new Notification('🎉 Poké Pack Restock!', { body: msg });
   }
 }
 
@@ -316,18 +285,15 @@ function hideBanner() { document.getElementById('restockBanner').classList.remov
 function playChime() {
   try {
     const ctx = new AudioContext();
-    const notes = [880, 1108, 1318, 1760];
-    notes.forEach((freq, i) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
+    [880, 1108, 1318, 1760].forEach((freq, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
       o.connect(g); g.connect(ctx.destination);
-      o.type = 'sine';
       o.frequency.value = freq;
-      g.gain.setValueAtTime(0, ctx.currentTime + i * 0.12);
-      g.gain.linearRampToValueAtTime(0.25, ctx.currentTime + i * 0.12 + 0.04);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.35);
-      o.start(ctx.currentTime + i * 0.12);
-      o.stop(ctx.currentTime + i * 0.12 + 0.35);
+      const t = ctx.currentTime + i * 0.12;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.25, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      o.start(t); o.stop(t + 0.35);
     });
   } catch {}
 }
@@ -347,7 +313,7 @@ function scheduleAuto() {
 function addLog(icon, text) {
   const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   scanHistory.unshift({ icon, text, time });
-  if (scanHistory.length > 50) scanHistory.pop();
+  if (scanHistory.length > 60) scanHistory.pop();
   renderLog();
 }
 
@@ -367,22 +333,23 @@ function clearLog() { scanHistory = []; renderLog(); }
 // ── Settings modal ────────────────────────────────────────────
 function openModal(id) {
   if (id === 'settingsModal') populateSettingsForm();
+  if (id === 'addStoreModal') updateStoreIdHint();
   document.getElementById(id).classList.add('open');
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 function populateSettingsForm() {
-  document.getElementById('bbApiKey').value      = settings.bbApiKey || '';
-  document.getElementById('userZip').value       = settings.zip || '85142';
-  document.getElementById('alertEmail').value    = settings.email || '';
-  document.getElementById('checkInterval').value = settings.interval || 30;
-  document.getElementById('toggleNotify').checked = settings.notify || false;
-  document.getElementById('toggleSound').checked  = settings.sound || false;
+  document.getElementById('workerUrl').value      = settings.workerUrl || '';
+  document.getElementById('userZip').value        = settings.zip || '85142';
+  document.getElementById('alertEmail').value     = settings.email || '';
+  document.getElementById('checkInterval').value  = settings.interval || 30;
+  document.getElementById('toggleNotify').checked = !!settings.notify;
+  document.getElementById('toggleSound').checked  = !!settings.sound;
 }
 
 function saveSettings() {
-  settings.bbApiKey  = document.getElementById('bbApiKey').value.trim();
+  settings.workerUrl = document.getElementById('workerUrl').value.trim().replace(/\/$/, '');
   settings.zip       = document.getElementById('userZip').value.trim() || '85142';
   settings.email     = document.getElementById('alertEmail').value.trim();
   settings.interval  = parseInt(document.getElementById('checkInterval').value) || 30;
@@ -393,7 +360,8 @@ function saveSettings() {
   scheduleAuto();
   updateHeaderSub();
   closeModal('settingsModal');
-  addLog('⚙️', 'Settings saved.');
+  addLog('⚙️', `Settings saved. Worker URL: ${settings.workerUrl || 'not set'}`);
+  renderStores(); // re-render to clear "setup needed" badges if worker was just added
 }
 
 function applySettings() {
@@ -402,13 +370,11 @@ function applySettings() {
 
 function handleNotifyToggle(el) {
   if (el.checked && 'Notification' in window && Notification.permission !== 'granted') {
-    Notification.requestPermission().then(p => {
-      if (p !== 'granted') el.checked = false;
-    });
+    Notification.requestPermission().then(p => { if (p !== 'granted') el.checked = false; });
   }
 }
 
-// ── Add Store modal ───────────────────────────────────────────
+// ── Add Store ────────────────────────────────────────────────
 function updateStoreIdHint() {
   const r = document.getElementById('newStoreRetailer').value;
   document.getElementById('bbStoreIdRow').style.display  = r === 'bestbuy' ? 'block' : 'none';
@@ -424,30 +390,21 @@ function saveNewStore() {
   const hours    = document.getElementById('newStoreHours').value.trim();
   const bbId     = document.getElementById('newStoreBBId').value.trim();
   const tgtId    = document.getElementById('newStoreTgtId').value.trim();
-
   if (!name) { alert('Please enter a store name.'); return; }
 
-  const id = 'custom_' + Date.now();
-  const [storeBrand, ...locationParts] = name.split(' ');
   stores.push({
-    id, retailer,
+    id: 'custom_' + Date.now(), retailer,
     name: retailer === 'bestbuy' ? 'Best Buy' : 'Target',
-    location: name,
-    addr, dist, phone, hours,
-    bbStoreId: bbId || null,
-    tgtStoreId: tgtId || null,
+    location: name, addr, dist, phone, hours,
+    bbStoreId: bbId || null, tgtStoreId: tgtId || null,
   });
-
-  saveStores();
-  renderStores();
-  closeModal('addStoreModal');
-  // Clear fields
+  saveStores(); renderStores(); closeModal('addStoreModal');
   ['newStoreName','newStoreAddr','newStoreDist','newStorePhone','newStoreHours','newStoreBBId','newStoreTgtId']
     .forEach(id => { document.getElementById(id).value = ''; });
   addLog('🏪', `Store added: ${name}`);
 }
 
-// ── Add Pack modal ────────────────────────────────────────────
+// ── Add Pack ─────────────────────────────────────────────────
 function saveNewPack() {
   const name  = document.getElementById('newPackName').value.trim();
   const emoji = document.getElementById('newPackEmoji').value.trim() || '📦';
@@ -455,31 +412,23 @@ function saveNewPack() {
   const bbSku = document.getElementById('newPackBBSku').value.trim();
   const tcin  = document.getElementById('newPackTcin').value.trim();
   const upc   = document.getElementById('newPackUpc').value.trim();
-
   if (!name) { alert('Please enter a pack name.'); return; }
 
   const id = 'custom_' + Date.now();
-  packs.push({ id, name, emoji, price, bbSku: bbSku || null, tcin: tcin || null, upc: upc || null });
-  selectedIds.add(id);  // auto-select new packs
-  savePacks();
-  saveSelected();
-  renderPacks();
-  renderStores();
-  closeModal('addPackModal');
+  packs.push({ id, name, emoji, price, bbSku: bbSku||null, tcin: tcin||null, upc: upc||null });
+  selectedIds.add(id);
+  savePacks(); saveSelected(); renderPacks(); renderStores(); closeModal('addPackModal');
   ['newPackName','newPackEmoji','newPackPrice','newPackBBSku','newPackTcin','newPackUpc']
     .forEach(id => { document.getElementById(id).value = ''; });
   addLog('🃏', `Pack added: ${name}`);
 }
 
-// ── Misc ──────────────────────────────────────────────────────
+// ── Misc ─────────────────────────────────────────────────────
 function updateHeaderSub() {
   document.getElementById('storeCount').textContent = stores.length;
   document.getElementById('headerZip').textContent  = settings.zip || '85142';
 }
 
-// Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) overlay.classList.remove('open');
-  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
 });

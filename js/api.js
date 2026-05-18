@@ -1,127 +1,80 @@
 // ═══════════════════════════════════════
-//  api.js — Real inventory data fetching
+//  api.js — Inventory data fetching
 //
-//  Best Buy: Official API (free key at developer.bestbuy.com)
-//  Target:   BrickSeek deep-links (no API key needed)
+//  Target:   Live data via your Cloudflare Worker proxy
+//  Best Buy: BrickSeek links (no API key needed)
+//
+//  SETUP: After deploying your Cloudflare Worker,
+//  paste your worker URL into Settings -> Worker URL
+//  e.g. https://pokehunter-proxy.YOUR-NAME.workers.dev
 // ═══════════════════════════════════════
 
 const API = {
 
-  // ── BEST BUY ────────────────────────────────────────────────
-  // Docs: https://developer.bestbuy.com/documentation/stores-api
-  //
-  // Checks a single SKU across a specific store.
-  // Returns: 'in-stock' | 'limited' | 'out' | 'no-sku' | 'error'
+  // Target via Cloudflare Worker proxy
+  // Returns: { status, qty }
+  // status: 'in-stock' | 'limited' | 'out' | 'no-tcin' | 'no-worker' | 'error'
+  async checkTarget(tcin, storeId, workerUrl) {
+    if (!tcin)      return { status: 'no-tcin',     qty: null };
+    if (!storeId)   return { status: 'no-store-id', qty: null };
+    if (!workerUrl) return { status: 'no-worker',   qty: null };
 
-  async checkBestBuy(sku, storeId, apiKey) {
-    if (!sku) return { status: 'no-sku', qty: null };
-    if (!apiKey) return { status: 'no-key', qty: null };
+    const targetApiUrl =
+      `https://redsky.target.com/v3/stores/${storeId}/products/${tcin}` +
+      `?key=ff457966e64d5e877fdbad070f276d18ecec4a01` +
+      `&channel=WEB&page=%2Fp%2FA-${tcin}`;
 
-    const url =
-      `https://api.bestbuy.com/v1/products(sku=${sku})?` +
-      `show=sku,name,inStoreAvailability,inStoreAvailabilityText` +
-      `&storeId=${storeId}` +
-      `&apiKey=${apiKey}` +
-      `&format=json`;
+    const proxyUrl = `${workerUrl.replace(/\/$/, '')}/?url=${encodeURIComponent(targetApiUrl)}`;
 
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`BB API ${res.status}`);
-      const data = await res.json();
-      const products = data.products || [];
-      if (!products.length) return { status: 'out', qty: 0 };
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+      if (res.status === 404) return { status: 'out', qty: 0 };
+      if (!res.ok) return { status: 'error', qty: null, error: `HTTP ${res.status}` };
 
-      const p = products[0];
-      if (p.inStoreAvailability === true) {
-        return { status: 'in-stock', qty: null, text: p.inStoreAvailabilityText };
-      }
-      return { status: 'out', qty: 0 };
+      const data = await res.json();
+      const locations = data?.locations ?? [];
+      const loc = locations.find(l => String(l.location_id) === String(storeId)) ?? locations[0];
+
+      if (!loc) return { status: 'out', qty: 0 };
+      const qty = loc.onhand_quantity ?? loc.available_to_promise_quantity ?? 0;
+      if (qty <= 0) return { status: 'out',     qty: 0 };
+      if (qty <= 3) return { status: 'limited', qty };
+      return          { status: 'in-stock',     qty };
     } catch (err) {
-      console.warn('Best Buy API error:', err);
+      console.warn('Target fetch error:', err.message);
       return { status: 'error', qty: null, error: err.message };
     }
   },
 
-  // ── BEST BUY — product page URL ─────────────────────────────
-  bestBuyProductUrl(sku) {
-    if (!sku) return null;
-    return `https://www.bestbuy.com/site/searchpage.jsp?st=${sku}`;
+  targetProductUrl(tcin) {
+    return tcin ? `https://www.target.com/p/-/A-${tcin}` : null;
   },
 
-  // ── TARGET via BrickSeek ─────────────────────────────────────
-  // BrickSeek scrapes Target's internal inventory API.
-  // We generate a direct deep-link per pack per store.
-  // Users click through; no API key required.
-  //
-  // BrickSeek URL format:
-  //   https://brickseek.com/target-inventory-checker/?upc={UPC}&zip={ZIP}
-  //
-  // For inline status we hit the unofficial Target inventory endpoint.
-  // This is the same endpoint BrickSeek uses, documented here:
-  //   https://redsky.target.com/redsky_aggregations/v1/web/plp_search_v2
-  //
-  // We use the simpler store-level availability endpoint:
-  //   https://redsky.target.com/v3/stores/{storeId}/products/{tcin}?key=ff457966e64d5e877fdbad070f276d18ecec4a01
-
-  brickseekUrl(upc, zip = '85142') {
-    if (!upc) return null;
-    return `https://brickseek.com/target-inventory-checker/?upc=${upc}&zip=${zip}`;
+  brickseekTargetUrl(upc, zip = '85142') {
+    return upc ? `https://brickseek.com/target-inventory-checker/?upc=${upc}&zip=${zip}` : null;
   },
 
   brickseekBBUrl(upc, zip = '85142') {
-    if (!upc) return null;
-    return `https://brickseek.com/best-buy-inventory-checker/?upc=${upc}&zip=${zip}`;
+    return upc ? `https://brickseek.com/best-buy-inventory-checker/?upc=${upc}&zip=${zip}` : null;
   },
 
-  // Target unofficial redsky endpoint (no key needed as of 2025)
-  async checkTarget(tcin, storeId) {
-    if (!tcin) return { status: 'no-sku', qty: null };
-    if (!storeId) return { status: 'no-store-id', qty: null };
-
-    // Target's Redsky API — public endpoint, no auth required
-    const key = 'ff457966e64d5e877fdbad070f276d18ecec4a01';
-    const url =
-      `https://redsky.target.com/v3/stores/${storeId}/products/${tcin}` +
-      `?key=${key}&channel=WEB&page=%2Fp%2FA-${tcin}`;
-
-    try {
-      const res = await fetch(url, {
-        headers: { 'Accept': 'application/json' }
-      });
-
-      if (res.status === 404) return { status: 'out', qty: 0 };
-      if (!res.ok) throw new Error(`Target Redsky ${res.status}`);
-
-      const data = await res.json();
-      const loc = data?.locations?.[0];
-      if (!loc) return { status: 'out', qty: 0 };
-
-      const onHand = loc.onhand_quantity ?? 0;
-      if (onHand <= 0) return { status: 'out', qty: 0 };
-      if (onHand <= 3) return { status: 'limited', qty: onHand };
-      return { status: 'in-stock', qty: onHand };
-    } catch (err) {
-      // CORS is a known issue when running locally without a proxy.
-      // On GitHub Pages this will work if Target's CORS policy allows it;
-      // otherwise the BrickSeek link is the fallback.
-      console.warn('Target Redsky CORS/error:', err.message);
-      return { status: 'cors-fallback', qty: null };
-    }
+  bestBuyProductUrl(sku) {
+    return sku ? `https://www.bestbuy.com/site/searchpage.jsp?st=${sku}` : null;
   },
 
-  // ── Batch check all selected packs for one store ─────────────
-  async checkStore(store, packs, apiKey, zip) {
+  async checkStore(store, packs, settings) {
     const results = {};
     for (const pack of packs) {
-      if (store.retailer === 'bestbuy') {
-        results[pack.id] = await API.checkBestBuy(pack.bbSku, store.bbStoreId, apiKey);
-      } else if (store.retailer === 'target') {
-        results[pack.id] = await API.checkTarget(pack.tcin, store.tgtStoreId);
+      if (store.retailer === 'target') {
+        results[pack.id] = await API.checkTarget(pack.tcin, store.tgtStoreId, settings.workerUrl);
+      } else if (store.retailer === 'bestbuy') {
+        results[pack.id] = pack.bbSku
+          ? { status: 'use-brickseek', qty: null }
+          : { status: 'no-sku',        qty: null };
       } else {
-        results[pack.id] = { status: 'no-sku' };
+        results[pack.id] = { status: 'unknown', qty: null };
       }
-      // Be kind to APIs — small delay between requests
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 150));
     }
     return results;
   },
