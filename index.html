@@ -20,9 +20,9 @@
       <button class="modal-close" onclick="closeModal('settingsModal')">✕</button>
     </div>
     <div class="modal-body">
-      <label class="field-label">Best Buy API Key</label>
-      <input type="text" id="bbApiKey" class="field-input" placeholder="Get free key at developer.bestbuy.com" />
-      <p class="field-hint">Used for real-time in-store inventory data from Best Buy's official API.</p>
+      <label class="field-label">Cloudflare Worker URL</label>
+      <input type="text" id="workerUrl" class="field-input" placeholder="https://pokehunter-proxy.YOUR-NAME.workers.dev" />
+      <p class="field-hint">Required for live Target inventory. Deploy the free <code>worker.js</code> on <a href="https://workers.cloudflare.com" target="_blank" style="color:var(--yellow)">workers.cloudflare.com</a> (free Gmail login, no credit card). See README for step-by-step instructions.</p>
 
       <label class="field-label" style="margin-top:18px;">Your ZIP Code</label>
       <input type="text" id="userZip" class="field-input" placeholder="e.g. 85142" maxlength="5" />
