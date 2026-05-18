@@ -36,7 +36,7 @@ const DEFAULT_STORES = [
     dist: '~2 miles',
     phone: '(480) 214-4810',
     hours: 'Daily 7AM–10PM',
-    tgtStoreId: '3393', // ← update with real Target store ID
+    tgtStoreId: '2365', // Target Queen Creek (Ellsworth) — confirmed target.com/sl/queen-creek/2365
   },
   {
     id: 'tgt_gantzel',
@@ -47,7 +47,7 @@ const DEFAULT_STORES = [
     dist: '~7 miles',
     phone: '(480) 212-1102',
     hours: 'Mon–Fri 7AM–10PM · Sat–Sun 8AM–10PM',
-    tgtStoreId: '3506', // ← update with real Target store ID
+    tgtStoreId: '2920', // Target Queen Creek Gantzel — confirmed target.com/sl/queen-creek-gantzel-and-combs/2920
   },
   {
     id: 'tgt_mesa_power',
@@ -58,7 +58,7 @@ const DEFAULT_STORES = [
     dist: '~14 miles',
     phone: '(480) 281-0268',
     hours: 'Daily 7AM–10PM',
-    tgtStoreId: '2911', // ← update with real Target store ID
+    tgtStoreId: '1959', // Target Gilbert Gateway — confirmed target.com/sl/gilbert-gateway/1959
   },
 ];
 
