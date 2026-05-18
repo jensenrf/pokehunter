@@ -24,6 +24,10 @@
       <input type="text" id="workerUrl" class="field-input" placeholder="https://pokehunter-proxy.YOUR-NAME.workers.dev" />
       <p class="field-hint">Required for live Target inventory. Deploy the free <code>worker.js</code> on <a href="https://workers.cloudflare.com" target="_blank" style="color:var(--yellow)">workers.cloudflare.com</a> (free Gmail login, no credit card). See README for step-by-step instructions.</p>
 
+      <label class="field-label" style="margin-top:18px;">Target Cookie</label>
+      <textarea id="targetCookie" class="field-input" rows="3" placeholder="Paste your Target cookie string here" style="font-size:10px;font-family:monospace;resize:vertical;"></textarea>
+      <p class="field-hint">Required for live Target inventory. Go to <a href="https://www.target.com" target="_blank" style="color:var(--yellow)">target.com</a>, open DevTools (F12) → Network tab → search for "redsky" → click any request → copy the full <strong>Cookie:</strong> value from Request Headers. Refresh every few weeks when it expires.</p>
+
       <label class="field-label" style="margin-top:18px;">Your ZIP Code</label>
       <input type="text" id="userZip" class="field-input" placeholder="e.g. 85142" maxlength="5" />
 

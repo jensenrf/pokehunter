@@ -9,12 +9,13 @@ let selectedIds = new Set();
 let stockState  = {};
 let scanHistory = [];
 let settings    = {
-  workerUrl: '',
-  zip:       '85142',
-  email:     '',
-  interval:  30,
-  notify:    false,
-  sound:     false,
+  workerUrl:    '',
+  targetCookie: '',
+  zip:          '85142',
+  email:        '',
+  interval:     30,
+  notify:       false,
+  sound:        false,
 };
 let autoTimer  = null;
 let isScanning = false;
@@ -110,7 +111,7 @@ function renderStores() {
     const badge    = isTarget ? '🎯' : '🟨';
     const badgeCls = isTarget ? 'target' : 'bestbuy';
     const storeStock = stockState[store.id] || {};
-    const noWorker = isTarget && !settings.workerUrl;
+    const noWorker = isTarget && (!settings.workerUrl || !settings.targetCookie);
 
     const items = tracked.length === 0
       ? '<div class="store-empty">Select packs on the left to track</div>'
@@ -132,6 +133,7 @@ function renderStores() {
             else if (s === 'no-tcin')       { badgeHtml = `<span class="badge no-sku">No TCIN set</span>`; }
             else if (s === 'no-store-id')   { badgeHtml = `<span class="badge no-sku">No Store ID</span>`; }
             else if (s === 'no-worker')     { badgeHtml = `<span class="badge no-sku">⚙️ Add Worker URL</span>`; }
+            else if (s === 'no-cookie')     { badgeHtml = `<span class="badge no-sku">⚙️ Add Target Cookie</span>`; }
             else if (s === 'use-brickseek') { badgeHtml = `<span class="badge no-sku">See BrickSeek →</span>`; }
             else if (s === 'no-sku')        { badgeHtml = `<span class="badge no-sku">No SKU</span>`; }
             else                            { badgeHtml = `<span class="badge out">Error</span>`; }
@@ -202,8 +204,8 @@ async function runAllChecks() {
   }
 
   const targetStores = stores.filter(s => s.retailer === 'target');
-  if (targetStores.length && !settings.workerUrl) {
-    addLog('⚙️', 'Worker URL not set — Target stores will show "Setup needed". Add it in ⚙️ Settings.');
+  if (targetStores.length && (!settings.workerUrl || !settings.targetCookie)) {
+    addLog('⚙️', 'Worker URL or Target Cookie not set — Target stores will show "Setup needed". Add both in ⚙️ Settings.');
   }
 
   addLog('🔍', `Scanning ${stores.length} store${stores.length !== 1 ? 's' : ''} for ${tracked.length} pack${tracked.length !== 1 ? 's' : ''}…`);
@@ -341,6 +343,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 
 function populateSettingsForm() {
   document.getElementById('workerUrl').value      = settings.workerUrl || '';
+  document.getElementById('targetCookie').value   = settings.targetCookie || '';
   document.getElementById('userZip').value        = settings.zip || '85142';
   document.getElementById('alertEmail').value     = settings.email || '';
   document.getElementById('checkInterval').value  = settings.interval || 30;
@@ -349,8 +352,9 @@ function populateSettingsForm() {
 }
 
 function saveSettings() {
-  settings.workerUrl = document.getElementById('workerUrl').value.trim().replace(/\/$/, '');
-  settings.zip       = document.getElementById('userZip').value.trim() || '85142';
+  settings.workerUrl    = document.getElementById('workerUrl').value.trim().replace(/\/$/, '');
+  settings.targetCookie = document.getElementById('targetCookie').value.trim();
+  settings.zip          = document.getElementById('userZip').value.trim() || '85142';
   settings.email     = document.getElementById('alertEmail').value.trim();
   settings.interval  = parseInt(document.getElementById('checkInterval').value) || 30;
   settings.notify    = document.getElementById('toggleNotify').checked;
