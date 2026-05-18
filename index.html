@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Poké Pack Hunter</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════ MODALS ═══════════════════════════════════════ -->
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">⚙️ Settings</span>
+      <button class="modal-close" onclick="closeModal('settingsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label">Best Buy API Key</label>
+      <input type="text" id="bbApiKey" class="field-input" placeholder="Get free key at developer.bestbuy.com" />
+      <p class="field-hint">Used for real-time in-store inventory data from Best Buy's official API.</p>
+
+      <label class="field-label" style="margin-top:18px;">Your ZIP Code</label>
+      <input type="text" id="userZip" class="field-input" placeholder="e.g. 85142" maxlength="5" />
+
+      <label class="field-label" style="margin-top:18px;">Alert Email</label>
+      <input type="email" id="alertEmail" class="field-input" placeholder="you@email.com" />
+      <p class="field-hint">Displayed in restock alerts so you know where to look. Email sending requires a backend service.</p>
+
+      <label class="field-label" style="margin-top:18px;">Auto-Check Interval</label>
+      <select id="checkInterval" class="field-input">
+        <option value="15">Every 15 minutes</option>
+        <option value="30" selected>Every 30 minutes</option>
+        <option value="60">Every hour</option>
+        <option value="0">Manual only</option>
+      </select>
+
+      <div class="toggle-row" style="margin-top:18px;">
+        <div>
+          <div class="field-label" style="margin:0;">Browser Notifications</div>
+          <div class="field-hint" style="margin:4px 0 0;">Pop-up alerts when packs restock</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggleNotify" onchange="handleNotifyToggle(this)" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <div>
+          <div class="field-label" style="margin:0;">Sound Alert</div>
+          <div class="field-hint" style="margin:4px 0 0;">Chime on restock detection</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggleSound" />
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('settingsModal')">Cancel</button>
+      <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Store Modal -->
+<div class="modal-overlay" id="addStoreModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">🏪 Add Store</span>
+      <button class="modal-close" onclick="closeModal('addStoreModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label">Retailer</label>
+      <select id="newStoreRetailer" class="field-input" onchange="updateStoreIdHint()">
+        <option value="target">Target</option>
+        <option value="bestbuy">Best Buy</option>
+      </select>
+
+      <label class="field-label" style="margin-top:14px;">Store Name / Location Label</label>
+      <input type="text" id="newStoreName" class="field-input" placeholder="e.g. Target Chandler" />
+
+      <label class="field-label" style="margin-top:14px;">Address</label>
+      <input type="text" id="newStoreAddr" class="field-input" placeholder="e.g. 123 Main St" />
+
+      <label class="field-label" style="margin-top:14px;">Distance from You</label>
+      <input type="text" id="newStoreDist" class="field-input" placeholder="e.g. ~8 miles" />
+
+      <label class="field-label" style="margin-top:14px;">Phone (optional)</label>
+      <input type="text" id="newStorePhone" class="field-input" placeholder="(480) 555-0000" />
+
+      <label class="field-label" style="margin-top:14px;">Hours (optional)</label>
+      <input type="text" id="newStoreHours" class="field-input" placeholder="Daily 7AM–10PM" />
+
+      <div id="bbStoreIdRow" style="display:none;margin-top:14px;">
+        <label class="field-label">Best Buy Store ID</label>
+        <input type="text" id="newStoreBBId" class="field-input" placeholder="e.g. 281" />
+        <p class="field-hint">Find at: <a href="https://www.bestbuy.com/site/store-locator" target="_blank" style="color:var(--yellow)">bestbuy.com/site/store-locator</a> → click a store → ID is in the URL</p>
+      </div>
+
+      <div id="tgtStoreIdRow" style="margin-top:14px;">
+        <label class="field-label">Target Store ID</label>
+        <input type="text" id="newStoreTgtId" class="field-input" placeholder="e.g. 1234" />
+        <p class="field-hint">Find at: <a href="https://www.target.com/store-locator/find-stores" target="_blank" style="color:var(--yellow)">target.com/store-locator</a> → click a store → ID is in the URL</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('addStoreModal')">Cancel</button>
+      <button class="btn-primary" onclick="saveNewStore()">Add Store</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Pack Modal -->
+<div class="modal-overlay" id="addPackModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">🃏 Add Pack</span>
+      <button class="modal-close" onclick="closeModal('addPackModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label">Pack Name</label>
+      <input type="text" id="newPackName" class="field-input" placeholder="e.g. Twilight Masquerade ETB" />
+
+      <label class="field-label" style="margin-top:14px;">Emoji Icon</label>
+      <input type="text" id="newPackEmoji" class="field-input" placeholder="e.g. 🌙" maxlength="4" />
+
+      <label class="field-label" style="margin-top:14px;">Price</label>
+      <input type="text" id="newPackPrice" class="field-input" placeholder="e.g. $49.99" />
+
+      <label class="field-label" style="margin-top:14px;">Best Buy SKU <span style="color:var(--muted);font-weight:400;">(optional)</span></label>
+      <input type="text" id="newPackBBSku" class="field-input" placeholder="e.g. 6578943" />
+      <p class="field-hint">Find the SKU on bestbuy.com product page URL or listing. Enables live Best Buy inventory lookup.</p>
+
+      <label class="field-label" style="margin-top:14px;">Target TCIN <span style="color:var(--muted);font-weight:400;">(optional)</span></label>
+      <input type="text" id="newPackTcin" class="field-input" placeholder="e.g. 89382045" />
+      <p class="field-hint">The TCIN is in the Target product URL: target.com/p/-/A-<strong>TCIN</strong>. Enables live Target inventory lookup via BrickSeek.</p>
+
+      <label class="field-label" style="margin-top:14px;">BrickSeek UPC <span style="color:var(--muted);font-weight:400;">(optional)</span></label>
+      <input type="text" id="newPackUpc" class="field-input" placeholder="e.g. 820650858499" />
+      <p class="field-hint">UPC is on the pack's barcode. Powers the BrickSeek deep-link for instant manual lookup.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('addPackModal')">Cancel</button>
+      <button class="btn-primary" onclick="saveNewPack()">Add Pack</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════ RESTOCK ALERT BANNER ═══════════════════════════════════════ -->
+<div class="restock-banner" id="restockBanner">
+  <span class="restock-icon">🎉</span>
+  <div class="restock-body">
+    <div class="restock-title">RESTOCK DETECTED</div>
+    <div class="restock-msg" id="restockMsg">Pack found at store!</div>
+  </div>
+  <a id="restockLink" href="#" target="_blank" class="btn-primary" style="font-size:11px;padding:7px 14px;">View →</a>
+  <button class="modal-close" onclick="hideBanner()">✕</button>
+</div>
+
+<!-- ═══════════════════════════════════════ HEADER ═══════════════════════════════════════ -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="logo-wrap">
+      <div class="pokeball" aria-hidden="true">
+        <div class="pb-top"></div>
+        <div class="pb-band"><div class="pb-btn"></div></div>
+        <div class="pb-bottom"></div>
+      </div>
+      <div>
+        <div class="site-title">POKÉ PACK HUNTER</div>
+        <div class="site-sub" id="headerSub">Monitoring <span id="storeCount">5</span> stores · ZIP <span id="headerZip">85142</span></div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="status-pill" id="statusPill">
+        <span class="status-dot"></span>
+        <span id="statusText">LIVE</span>
+      </div>
+      <button class="icon-btn" onclick="openModal('settingsModal')" title="Settings">⚙️</button>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════ MAIN ═══════════════════════════════════════ -->
+<main class="main-wrap">
+
+  <!-- Control Bar -->
+  <div class="control-bar">
+    <div class="last-check-wrap">
+      <span class="muted-label">Last scan:</span>
+      <span id="lastCheckTime">Never</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span class="auto-badge" id="autoBadge">⏱ Auto: 30min</span>
+      <button class="btn-primary" id="checkBtn" onclick="runAllChecks()">🔍 Scan All Stores</button>
+    </div>
+  </div>
+
+  <!-- Two-column layout -->
+  <div class="layout">
+
+    <!-- LEFT: Packs panel -->
+    <aside class="panel packs-panel">
+      <div class="panel-header">
+        <span class="panel-title">🃏 PACKS</span>
+        <button class="add-btn" onclick="openModal('addPackModal')">+ Add</button>
+      </div>
+      <div id="packList" class="pack-list"></div>
+    </aside>
+
+    <!-- RIGHT: Stores + Log -->
+    <div class="right-col">
+
+      <!-- Stores -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">🏪 STORES</span>
+          <button class="add-btn" onclick="openModal('addStoreModal')">+ Add Store</button>
+        </div>
+        <div id="storeGrid" class="store-grid"></div>
+      </div>
+
+      <!-- Scan Log -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">📋 SCAN LOG</span>
+          <button class="add-btn" onclick="clearLog()" style="color:var(--muted);">Clear</button>
+        </div>
+        <div id="scanLog" class="scan-log">
+          <div class="log-entry">
+            <span class="log-icon">ℹ️</span>
+            <span class="log-text">Tracker ready. Add your Best Buy API key in ⚙️ Settings for live data.</span>
+            <span class="log-time">now</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
